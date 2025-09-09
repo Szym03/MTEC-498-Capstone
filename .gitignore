@@ -1,0 +1,22 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# macOS folder attributes
+Icon?
+._*
+
+# macOS trash folder
+.Trashes
+*.swp
+.fseventsd
+.Spotlight-V100
+.VolumeIcon.icns
+
+# Vim swap and backup files
+*.un~
+*.sw?
+
+#vscode
+.vscode/
