@@ -1,0 +1,59 @@
+//Entirely AI generated, used to demo BLE connection.
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Tap Sensor Web Bluetooth</title>
+</head>
+
+<body>
+    <h1>Tap Sensor Web Bluetooth Demo</h1>
+    <button id="connect">Connect to Sensor</button>
+    <div id="output"></div>
+    <div id="taps"></div>
+
+    <script>
+        const serviceUuid = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"; // UART service
+        const charUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // Notify characteristic
+
+        async function connectBLE() {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: "TapSensor" }], // match ESP32 advertised name
+                    optionalServices: [serviceUuid]
+                });
+
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(serviceUuid);
+                const characteristic = await service.getCharacteristic(charUuid);
+
+                await characteristic.startNotifications();
+                characteristic.addEventListener("characteristicvaluechanged", event => {
+                    const value = new TextDecoder().decode(event.target.value);
+                    console.log("Received:", value);
+
+                    if (value === "single" || value === "double") {
+                        document.getElementById("taps").innerText = "Tap event: " + value;
+                    } else if (value.startsWith("X:")) {
+                        const parts = value.split(" ");
+                        const x = parseFloat(parts[1]);
+                        const y = parseFloat(parts[3]);
+                        const z = parseFloat(parts[5]);
+                        document.getElementById("output").innerText =
+                            `Accel -> X:${x.toFixed(2)} Y:${y.toFixed(2)} Z:${z.toFixed(2)}`;
+                    }
+                });
+
+                document.getElementById("output").innerText = "Connected to " + device.name;
+            } catch (err) {
+                console.error("BLE error:", err);
+            }
+        }
+
+        document.getElementById("connect").addEventListener("click", connectBLE);
+    </script>
+</body>
+
+</html>
