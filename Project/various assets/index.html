@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>SonoCube Web Bluetooth</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #111;
+      color: #eee;
+      text-align: center;
+      margin-top: 2em;
+    }
+    button {
+      background: #00b894;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    #output, #gyro, #cap {
+      margin-top: 1.5em;
+      font-size: 1.1rem;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>SonoCube Web Bluetooth Demo</h1>
+  <button id="connect">Connect to Sensor</button>
+
+  <div id="output">Accel: —</div>
+  <div id="gyro">Gyro: —</div>
+  <div id="cap">Cap: —</div>
+
+  <script>
+    const serviceUuid = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"; // UART service
+    const charUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";   // Notify characteristic
+
+    async function connectBLE() {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: "MotionSensor" }], // match ESP32 advertised name
+          optionalServices: [serviceUuid]
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(serviceUuid);
+        const characteristic = await service.getCharacteristic(charUuid);
+
+        await characteristic.startNotifications();
+        characteristic.addEventListener("characteristicvaluechanged", event => {
+          const value = new TextDecoder().decode(event.target.value);
+          console.log("Received:", value);
+
+          try {
+            const data = JSON.parse(value);
+
+            if (data.x !== undefined && data.y !== undefined && data.z !== undefined) {
+              document.getElementById("output").innerText =
+                `Accel → X:${data.x.toFixed(2)} Y:${data.y.toFixed(2)} Z:${data.z.toFixed(2)}`;
+            }
+
+            if (data.gx !== undefined && data.gy !== undefined && data.gz !== undefined) {
+              document.getElementById("gyro").innerText =
+                `Gyro → X:${data.gx.toFixed(2)} Y:${data.gy.toFixed(2)} Z:${data.gz.toFixed(2)}`;
+            }
+
+            if (data.cap !== undefined) {
+              document.getElementById("cap").innerText = "Cap touch: " + data.cap;
+            }
+
+          } catch (e) {
+            console.warn("Non-JSON value received:", value);
+          }
+        });
+
+        document.getElementById("output").innerText = "Connected to " + device.name;
+      } catch (err) {
+        console.error("BLE error:", err);
+      }
+    }
+
+    document.getElementById("connect").addEventListener("click", connectBLE);
+  </script>
+</body>
+
+</html>
