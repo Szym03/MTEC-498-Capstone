@@ -12,55 +12,41 @@ bool deviceConnected = false;
 int cap = 0;
 int capPin = A0;
 
-Adafruit_LIS3DH lis =
-    Adafruit_LIS3DH(&Wire1);  // use "&Wire1" when using the stemma qt port
-                              // connection, different pins for I2C
+Adafruit_LIS3DH lis(&Wire1);  // using Stemma QT port
 Adafruit_NeoPixel pixels(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
 
 #define CLICKTHRESHHOLD 100
 
-void setup(void) {
-  Serial.begin(115200);
+void setup() {
+  Serial.begin(115200);    // USB debug
+  Serial1.begin(115200);   // HW UART for Teensy link (TX pin on ESP → RX on Teensy)
   delay(200);
 
   // --- BLE init ---
-  NimBLEDevice::init("");  // empty here; we set the name in adv data below
-  // Optional but helpful: crank TX power for easier discovery
-  // If this line errors on your version, just comment it out.
-  NimBLEDevice::setPower(ESP_PWR_LVL_P9);  // or ESP_PWR_LVL_P7
+  NimBLEDevice::init(""); 
+  NimBLEDevice::setPower(ESP_PWR_LVL_P9);  
 
   pServer = NimBLEDevice::createServer();
-
-  // Nordic UART service + TX characteristic (notify)
-  NimBLEService* pService =
-      pServer->createService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
+  NimBLEService* pService = pServer->createService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
   pCharacteristic = pService->createCharacteristic(
       "6E400003-B5A3-F393-E0A9-E50E24DCCA9E", NIMBLE_PROPERTY::NOTIFY);
-
   pService->start();
 
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(
-      pService->getUUID());  // advertise the service UUID
-
-  // Build explicit advertising payload with a name + flags.
+  pAdvertising->addServiceUUID(pService->getUUID());
   NimBLEAdvertisementData advData;
-  advData.setName("TapSensor");  // <— shows up in scanners/UI
-  advData.setFlags(0x06);        // General Disc + BR/EDR Not Supported
+  advData.setName("TapSensor");
+  advData.setFlags(0x06);
   pAdvertising->setAdvertisementData(advData);
-
   pAdvertising->start();
   Serial.println("Advertising as TapSensor...");
 
-  // --- your existing setup below ---
+  // --- LIS3DH init ---
   pixels.begin();
   pixels.setBrightness(20);
 
-  Serial.println("Adafruit LIS3DH Tap Test!");
   if (!lis.begin(0x18)) {
     Serial.println("Couldnt start LIS3DH");
-    // BLE is already advertising, so you can still connect even if LIS3DH
-    // fails.
     while (1) yield();
   }
   Serial.println("LIS3DH found!");
@@ -70,7 +56,7 @@ void setup(void) {
 }
 
 void loop() {
-  // --- Read tap/click events ---
+  // --- Tap detection ---
   uint8_t click = lis.getClick();
   const char* tapStr = "";
 
@@ -84,14 +70,14 @@ void loop() {
     tapStr = "single";
   }
 
-  // --- Read live acceleration ---
+  // --- Acceleration ---
   sensors_event_t accelEvent;
   lis.getEvent(&accelEvent);
 
-  // --- Capacitive touch ---
+  // --- Capacitive input ---
   int cap = digitalRead(capPin);
 
-  // --- Bundle all into one JSON packet ---
+  // --- Build JSON ---
   char packet[128];
   snprintf(packet, sizeof(packet),
            "{\"tap\":\"%s\",\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"cap\":%d}",
@@ -101,8 +87,15 @@ void loop() {
            accelEvent.acceleration.z,
            cap);
 
+  // Send via BLE
   pCharacteristic->setValue((uint8_t*)packet, strlen(packet));
   pCharacteristic->notify();
 
-  delay(100);  // ~10 Hz update rate
+  // Send via UART to Teensy
+  Serial1.println(packet);   // Teensy reads this line
+
+  // Also print to USB debug
+  Serial.println(packet);
+
+  delay(100);  // ~10 Hz
 }
